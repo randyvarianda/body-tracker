@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Randy — Body Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0e0f11;
+    --surface: #161719;
+    --card: #1c1e21;
+    --border: #2a2d32;
+    --accent: #c8f060;
+    --accent2: #60c8f0;
+    --accent3: #f060a0;
+    --text: #e8eaed;
+    --muted: #6b7280;
+    --green: #4ade80;
+    --red: #f87171;
+    --yellow: #fbbf24;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    min-height: 100vh;
+    padding: 0;
+  }
+
+  /* HEADER */
+  header {
+    padding: 40px 40px 0;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+  .header-title h1 {
+    font-family: 'DM Serif Display', serif;
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    letter-spacing: -0.02em;
+    line-height: 1;
+    color: var(--accent);
+  }
+  .header-title p {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    margin-top: 6px;
+  }
+  .header-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+  .btn {
+    background: var(--accent);
+    color: #0e0f11;
+    border: none;
+    padding: 10px 20px;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: opacity 0.15s;
+  }
+  .btn:hover { opacity: 0.85; }
+  .btn-ghost {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    padding: 10px 20px;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .btn-ghost:hover { color: var(--text); border-color: var(--text); }
+
+  /* TABS */
+  .tabs {
+    padding: 32px 40px 0;
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .tab {
+    padding: 10px 20px;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: color 0.15s, border-color 0.15s;
+    margin-bottom: -1px;
+  }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab:hover:not(.active) { color: var(--text); }
+
+  /* MAIN CONTENT */
+  main { padding: 32px 40px 60px; }
+
+  .view { display: none; }
+  .view.active { display: block; }
+
+  /* SUMMARY CARDS */
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 32px;
+  }
+  .stat-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    position: relative;
+    overflow: hidden;
+  }
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--accent);
+  }
+  .stat-card.blue::before { background: var(--accent2); }
+  .stat-card.pink::before { background: var(--accent3); }
+  .stat-label {
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .stat-value {
+    font-family: 'DM Serif Display', serif;
+    font-size: 2rem;
+    line-height: 1;
+    color: var(--text);
+  }
+  .stat-unit {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  .stat-delta {
+    font-size: 10px;
+    margin-top: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .delta-good { color: var(--green); }
+  .delta-bad { color: var(--red); }
+  .delta-neutral { color: var(--muted); }
+
+  /* CHART AREA */
+  .chart-section {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    margin-bottom: 24px;
+  }
+  .chart-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+  .chart-title {
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .metric-select {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    outline: none;
+  }
+  .chart-canvas-wrap {
+    position: relative;
+    height: 200px;
+  }
+  canvas { width: 100% !important; }
+
+  /* HISTORY TABLE */
+  .history-section {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .history-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  th {
+    padding: 10px 16px;
+    text-align: left;
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+    white-space: nowrap;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+  .td-date { color: var(--accent); font-weight: 500; }
+  .td-delta { font-size: 10px; }
+
+  /* LOG FORM */
+  .form-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 28px;
+  }
+  .form-title {
+    font-family: 'DM Serif Display', serif;
+    font-size: 1.4rem;
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+  .form-subtitle {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 28px;
+  }
+  .form-section-label {
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--accent2);
+    margin-bottom: 14px;
+    margin-top: 24px;
+  }
+  .form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 14px;
+  }
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  label {
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  input[type="number"], input[type="date"] {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    padding: 10px 12px;
+    border-radius: 4px;
+    outline: none;
+    transition: border-color 0.15s;
+    -moz-appearance: textfield;
+    width: 100%;
+  }
+  input::-webkit-outer-spin-button,
+  input::-webkit-inner-spin-button { -webkit-appearance: none; }
+  input:focus { border-color: var(--accent); }
+  input[type="date"] { color-scheme: dark; }
+  .form-actions {
+    margin-top: 28px;
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+  }
+
+  /* CIRCUMFERENCE VISUAL */
+  .circ-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+  .circ-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 14px;
+    text-align: center;
+  }
+  .circ-name { font-size: 9px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 6px; }
+  .circ-val { font-family: 'DM Serif Display', serif; font-size: 1.6rem; color: var(--accent2); }
+  .circ-unit { font-size: 9px; color: var(--muted); }
+
+  /* PROGRESS BAR */
+  .progress-wrap { margin-bottom: 24px; }
+  .progress-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .progress-bar-bg {
+    height: 6px;
+    background: var(--border);
+    border-radius: 99px;
+    overflow: hidden;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius: 99px;
+    transition: width 0.6s ease;
+  }
+
+  /* RESPONSIVE */
+  @media (max-width: 600px) {
+    header, .tabs, main { padding-left: 20px; padding-right: 20px; }
+    .summary-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  /* NOTIFICATION */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--accent);
+    color: #0e0f11;
+    padding: 12px 20px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    z-index: 999;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.3s, transform 0.3s;
+    pointer-events: none;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-title">
+    <h1>Body Tracker</h1>
+    <p>Randy · Weight Loss Journey</p>
+  </div>
+  <div class="header-actions">
+    <button class="btn-ghost" onclick="exportCSV()">Export CSV</button>
+    <button class="btn" onclick="switchTab('log')">+ Log Entry</button>
+  </div>
+</header>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('dashboard')" id="tab-dashboard">Dashboard</div>
+  <div class="tab" onclick="switchTab('history')" id="tab-history">History</div>
+  <div class="tab" onclick="switchTab('log')" id="tab-log">Log Entry</div>
+</div>
+
+<main>
+
+  <!-- DASHBOARD VIEW -->
+  <div class="view active" id="view-dashboard">
+    <div class="summary-grid" id="summary-grid"></div>
+
+    <div class="chart-section">
+      <div class="chart-header">
+        <span class="chart-title">Progress Over Time</span>
+        <select class="metric-select" id="chart-metric" onchange="drawChart()">
+          <option value="weight">Weight (kg)</option>
+          <option value="bmi">BMI</option>
+          <option value="fat">Body Fat %</option>
+          <option value="visceral_fat">Visceral Fat</option>
+          <option value="waist">Waist (cm)</option>
+          <option value="muscle">Skeletal Muscle</option>
+        </select>
+      </div>
+      <div class="chart-canvas-wrap">
+        <canvas id="mainChart"></canvas>
+      </div>
+    </div>
+
+    <div id="circ-section">
+      <p style="font-size:9px;letter-spacing:0.15em;text-transform:uppercase;color:var(--accent2);margin-bottom:14px;">Latest Circumferences (cm)</p>
+      <div class="circ-grid" id="circ-grid"></div>
+    </div>
+  </div>
+
+  <!-- HISTORY VIEW -->
+  <div class="view" id="view-history">
+    <div class="history-section">
+      <div class="history-header">All Entries</div>
+      <div style="overflow-x:auto;">
+        <table id="history-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Weight</th>
+              <th>BMI</th>
+              <th>Fat%</th>
+              <th>Visceral</th>
+              <th>Muscle</th>
+              <th>RM</th>
+              <th>Waist</th>
+              <th>+5cm↑</th>
+              <th>+5cm↓</th>
+              <th>+10cm↓</th>
+              <th>Thigh L</th>
+              <th>Arm R</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="history-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOG ENTRY VIEW -->
+  <div class="view" id="view-log">
+    <div class="form-card">
+      <div class="form-title">New Entry</div>
+      <div class="form-subtitle">Log your measurements. Leave blank any you didn't measure.</div>
+
+      <div class="form-section-label">Date & Body Stats</div>
+      <div class="form-grid">
+        <div class="field"><label>Date</label><input type="date" id="f-date"></div>
+        <div class="field"><label>Weight (kg)</label><input type="number" id="f-weight" step="0.1" placeholder="67.1"></div>
+        <div class="field"><label>Height (cm)</label><input type="number" id="f-height" step="0.1" placeholder="165"></div>
+        <div class="field"><label>BMI</label><input type="number" id="f-bmi" step="0.1" placeholder="24.6"></div>
+        <div class="field"><label>Visceral Fat</label><input type="number" id="f-visceral" step="1" placeholder="9"></div>
+        <div class="field"><label>Body Age</label><input type="number" id="f-body-age" step="1" placeholder="37"></div>
+        <div class="field"><label>Body Fat %</label><input type="number" id="f-fat" step="0.1" placeholder="20.6"></div>
+        <div class="field"><label>Skeletal Muscle (kg)</label><input type="number" id="f-muscle" step="0.1" placeholder="32.8"></div>
+        <div class="field"><label>Resting Metabolism</label><input type="number" id="f-rm" step="1" placeholder="1566"></div>
+      </div>
+
+      <div class="form-section-label">Circumferences (cm)</div>
+      <div class="form-grid">
+        <div class="field"><label>Waist at Navel</label><input type="number" id="f-waist" step="0.5" placeholder="78.5"></div>
+        <div class="field"><label>5 cm Above Navel</label><input type="number" id="f-above5" step="0.5" placeholder="79.5"></div>
+        <div class="field"><label>5 cm Below Navel</label><input type="number" id="f-below5" step="0.5" placeholder="80.5"></div>
+        <div class="field"><label>10 cm Below Navel</label><input type="number" id="f-below10" step="0.5" placeholder="86"></div>
+        <div class="field"><label>Left Thigh (cm)</label><input type="number" id="f-thigh" step="0.5" placeholder="38"></div>
+        <div class="field"><label>Right Arm (cm)</label><input type="number" id="f-arm" step="0.5" placeholder="30"></div>
+      </div>
+
+      <div class="form-actions">
+        <button class="btn-ghost" onclick="clearForm()">Clear</button>
+        <button class="btn" onclick="saveEntry()">Save Entry</button>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ─── DATA ───────────────────────────────────────────────────────────────────
+const STORAGE_KEY = 'randy_body_tracker_v1';
+
+const SEED = [{
+  date: '2024-11-08',
+  weight: 67.1, height: 165, bmi: 24.6,
+  visceral_fat: 9, body_age: 37, fat: 20.6,
+  muscle: 32.8, rm: 1566,
+  waist: 78.5, above5: 79.5, below5: 80.5, below10: 86,
+  thigh: 38, arm: 30
+}];
+
+function loadData() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  return [...SEED];
+}
+
+function saveData(data) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+let entries = loadData();
+
+// ─── NAVIGATION ─────────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  document.getElementById('view-' + name).classList.add('active');
+  if (name === 'dashboard') renderDashboard();
+  if (name === 'history') renderHistory();
+}
+
+// ─── DASHBOARD ──────────────────────────────────────────────────────────────
+function renderDashboard() {
+  const sorted = [...entries].sort((a,b) => a.date.localeCompare(b.date));
+  const latest = sorted[sorted.length - 1];
+  const prev = sorted.length > 1 ? sorted[sorted.length - 2] : null;
+
+  const cards = [
+    { key: 'weight', label: 'Weight', unit: 'kg', lowerIsBetter: true },
+    { key: 'bmi', label: 'BMI', unit: '', lowerIsBetter: true },
+    { key: 'fat', label: 'Body Fat', unit: '%', lowerIsBetter: true },
+    { key: 'visceral_fat', label: 'Visceral Fat', unit: '', lowerIsBetter: true },
+    { key: 'muscle', label: 'Muscle', unit: 'kg', lowerIsBetter: false, cls: 'blue' },
+    { key: 'rm', label: 'Resting Met.', unit: 'kcal', lowerIsBetter: false, cls: 'blue' },
+    { key: 'body_age', label: 'Body Age', unit: 'yrs', lowerIsBetter: true, cls: 'pink' },
+    { key: 'waist', label: 'Waist', unit: 'cm', lowerIsBetter: true, cls: 'pink' },
+  ];
+
+  const grid = document.getElementById('summary-grid');
+  grid.innerHTML = cards.map(c => {
+    const val = latest[c.key];
+    if (val == null) return '';
+    let deltaHTML = '';
+    if (prev && prev[c.key] != null) {
+      const diff = (val - prev[c.key]).toFixed(1);
+      const good = c.lowerIsBetter ? diff < 0 : diff > 0;
+      const cls = diff == 0 ? 'delta-neutral' : good ? 'delta-good' : 'delta-bad';
+      const arrow = diff > 0 ? '↑' : diff < 0 ? '↓' : '→';
+      deltaHTML = `<div class="stat-delta ${cls}">${arrow} ${Math.abs(diff)} vs prev</div>`;
+    }
+    return `<div class="stat-card ${c.cls||''}">
+      <div class="stat-label">${c.label}</div>
+      <div class="stat-value">${val}</div>
+      <div class="stat-unit">${c.unit}</div>
+      ${deltaHTML}
+    </div>`;
+  }).join('');
+
+  // Circumferences
+  const circs = [
+    { key: 'waist', label: 'Navel' },
+    { key: 'above5', label: '5cm Above' },
+    { key: 'below5', label: '5cm Below' },
+    { key: 'below10', label: '10cm Below' },
+    { key: 'thigh', label: 'Thigh L' },
+    { key: 'arm', label: 'Arm R' },
+  ];
+  const cgrid = document.getElementById('circ-grid');
+  cgrid.innerHTML = circs.map(c => {
+    const v = latest[c.key];
+    if (v == null) return '';
+    return `<div class="circ-card">
+      <div class="circ-name">${c.label}</div>
+      <div class="circ-val">${v}</div>
+      <div class="circ-unit">cm</div>
+    </div>`;
+  }).join('');
+
+  drawChart();
+}
+
+// ─── CHART ───────────────────────────────────────────────────────────────────
+let chartInstance = null;
+
+function drawChart() {
+  const metric = document.getElementById('chart-metric').value;
+  const sorted = [...entries].sort((a,b) => a.date.localeCompare(b.date));
+  const labels = sorted.map(e => {
+    const d = new Date(e.date);
+    return d.toLocaleDateString('en-GB', { day:'2-digit', month:'short' });
+  });
+  const values = sorted.map(e => e[metric] ?? null);
+
+  const canvas = document.getElementById('mainChart');
+  const ctx = canvas.getContext('2d');
+
+  if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+
+  // Simple canvas chart (no library needed)
+  drawLineChart(ctx, canvas, labels, values);
+}
+
+function drawLineChart(ctx, canvas, labels, values) {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = 200 * dpr;
+  canvas.style.height = '200px';
+  ctx.scale(dpr, dpr);
+
+  const W = rect.width;
+  const H = 200;
+  const pad = { top: 16, right: 20, bottom: 40, left: 48 };
+  const cw = W - pad.left - pad.right;
+  const ch = H - pad.top - pad.bottom;
+
+  ctx.clearRect(0, 0, W, H);
+
+  const filtered = values.filter(v => v != null);
+  if (filtered.length === 0) return;
+
+  const minV = Math.min(...filtered);
+  const maxV = Math.max(...filtered);
+  const range = maxV - minV || 1;
+  const padV = range * 0.15;
+
+  const toX = i => pad.left + (i / Math.max(labels.length - 1, 1)) * cw;
+  const toY = v => pad.top + ch - ((v - (minV - padV)) / (range + padV * 2)) * ch;
+
+  // Grid lines
+  ctx.strokeStyle = '#2a2d3266';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.top + (i / 4) * ch;
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(pad.left + cw, y);
+    ctx.stroke();
+  }
+
+  // Y axis labels
+  ctx.fillStyle = '#6b7280';
+  ctx.font = '9px DM Mono, monospace';
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= 4; i++) {
+    const v = maxV + padV - ((i / 4) * (range + padV * 2));
+    const y = pad.top + (i / 4) * ch;
+    ctx.fillText(v.toFixed(1), pad.left - 6, y + 3);
+  }
+
+  // X axis labels
+  ctx.textAlign = 'center';
+  labels.forEach((l, i) => {
+    if (values[i] == null) return;
+    if (labels.length <= 8 || i % Math.ceil(labels.length / 6) === 0) {
+      ctx.fillText(l, toX(i), H - 8);
+    }
+  });
+
+  // Gradient fill
+  const grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + ch);
+  grad.addColorStop(0, 'rgba(200, 240, 96, 0.25)');
+  grad.addColorStop(1, 'rgba(200, 240, 96, 0)');
+
+  ctx.beginPath();
+  let started = false;
+  values.forEach((v, i) => {
+    if (v == null) return;
+    if (!started) { ctx.moveTo(toX(i), toY(v)); started = true; }
+    else ctx.lineTo(toX(i), toY(v));
+  });
+  const lastIdx = values.map((v,i)=>v!=null?i:-1).filter(i=>i>=0).pop();
+  const firstIdx = values.map((v,i)=>v!=null?i:-1).filter(i=>i>=0)[0];
+  ctx.lineTo(toX(lastIdx), pad.top + ch);
+  ctx.lineTo(toX(firstIdx), pad.top + ch);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  started = false;
+  values.forEach((v, i) => {
+    if (v == null) return;
+    if (!started) { ctx.moveTo(toX(i), toY(v)); started = true; }
+    else ctx.lineTo(toX(i), toY(v));
+  });
+  ctx.strokeStyle = '#c8f060';
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+
+  // Dots
+  values.forEach((v, i) => {
+    if (v == null) return;
+    ctx.beginPath();
+    ctx.arc(toX(i), toY(v), 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#0e0f11';
+    ctx.fill();
+    ctx.strokeStyle = '#c8f060';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  });
+
+  // Store so we can destroy
+  chartInstance = { destroy: () => {} };
+}
+
+// ─── HISTORY ─────────────────────────────────────────────────────────────────
+function renderHistory() {
+  const sorted = [...entries].sort((a,b) => b.date.localeCompare(a.date));
+  const tbody = document.getElementById('history-tbody');
+  tbody.innerHTML = sorted.map((e, i) => {
+    const prev = sorted[i + 1];
+    const wd = prev ? delta(e.weight, prev.weight, true) : '';
+    return `<tr>
+      <td class="td-date">${formatDate(e.date)}</td>
+      <td>${e.weight ?? '—'} <span class="td-delta">${wd}</span></td>
+      <td>${e.bmi ?? '—'}</td>
+      <td>${e.fat ?? '—'}${e.fat ? '%' : ''}</td>
+      <td>${e.visceral_fat ?? '—'}</td>
+      <td>${e.muscle ?? '—'}</td>
+      <td>${e.rm ?? '—'}</td>
+      <td>${e.waist ?? '—'}</td>
+      <td>${e.above5 ?? '—'}</td>
+      <td>${e.below5 ?? '—'}</td>
+      <td>${e.below10 ?? '—'}</td>
+      <td>${e.thigh ?? '—'}</td>
+      <td>${e.arm ?? '—'}</td>
+      <td><button class="btn-ghost" style="padding:4px 10px;font-size:10px;color:var(--red);border-color:var(--red)" onclick="deleteEntry('${e.date}')">✕</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function delta(curr, prev, lowerBetter) {
+  if (curr == null || prev == null) return '';
+  const d = (curr - prev).toFixed(1);
+  if (d == 0) return '';
+  const good = lowerBetter ? d < 0 : d > 0;
+  const cls = good ? 'delta-good' : 'delta-bad';
+  return `<span class="${cls}">${d > 0 ? '+' : ''}${d}</span>`;
+}
+
+function formatDate(iso) {
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+}
+
+// ─── LOG ──────────────────────────────────────────────────────────────────────
+function setTodayDate() {
+  const today = new Date();
+  document.getElementById('f-date').value = today.toISOString().split('T')[0];
+}
+
+function clearForm() {
+  document.querySelectorAll('#view-log input').forEach(i => {
+    if (i.type !== 'date') i.value = '';
+    else setTodayDate();
+  });
+}
+
+function saveEntry() {
+  const date = document.getElementById('f-date').value;
+  if (!date) { showToast('Please pick a date.'); return; }
+
+  const n = id => { const v = document.getElementById(id).value; return v === '' ? null : parseFloat(v); };
+
+  const entry = {
+    date,
+    weight: n('f-weight'), height: n('f-height'), bmi: n('f-bmi'),
+    visceral_fat: n('f-visceral'), body_age: n('f-body-age'), fat: n('f-fat'),
+    muscle: n('f-muscle'), rm: n('f-rm'),
+    waist: n('f-waist'), above5: n('f-above5'), below5: n('f-below5'),
+    below10: n('f-below10'), thigh: n('f-thigh'), arm: n('f-arm')
+  };
+
+  const existing = entries.findIndex(e => e.date === date);
+  if (existing >= 0) { entries[existing] = entry; showToast('Entry updated!'); }
+  else { entries.push(entry); showToast('Entry saved!'); }
+
+  saveData(entries);
+  clearForm();
+  setTimeout(() => switchTab('dashboard'), 600);
+}
+
+function deleteEntry(date) {
+  if (!confirm('Delete entry for ' + formatDate(date) + '?')) return;
+  entries = entries.filter(e => e.date !== date);
+  saveData(entries);
+  renderHistory();
+}
+
+// ─── EXPORT ──────────────────────────────────────────────────────────────────
+function exportCSV() {
+  const cols = ['date','weight','height','bmi','visceral_fat','body_age','fat','muscle','rm','waist','above5','below5','below10','thigh','arm'];
+  const header = cols.join(',');
+  const rows = [...entries]
+    .sort((a,b) => a.date.localeCompare(b.date))
+    .map(e => cols.map(c => e[c] ?? '').join(','));
+  const csv = [header, ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'randy_body_tracker.csv';
+  a.click();
+  showToast('CSV exported!');
+}
+
+// ─── TOAST ───────────────────────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+// ─── INIT ────────────────────────────────────────────────────────────────────
+setTodayDate();
+renderDashboard();
+
+window.addEventListener('resize', () => {
+  if (document.getElementById('view-dashboard').classList.contains('active')) drawChart();
+});
+</script>
+</body>
+</html>

@@ -329,6 +329,44 @@
   .circ-val { font-family: 'DM Serif Display', serif; font-size: 1.6rem; color: var(--accent2); }
   .circ-unit { font-size: 9px; color: var(--muted); }
 
+  /* MODAL */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 28px;
+    width: 100%;
+    max-width: 680px;
+    max-height: 90vh;
+    overflow-y: auto;
+    position: relative;
+  }
+  .modal-close {
+    position: absolute;
+    top: 16px; right: 16px;
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 18px;
+    cursor: pointer;
+    line-height: 1;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: color 0.15s;
+  }
+  .modal-close:hover { color: var(--text); }
+
   /* PROGRESS BAR */
   .progress-wrap { margin-bottom: 24px; }
   .progress-label {
@@ -386,6 +424,8 @@
   </div>
   <div class="header-actions">
     <button class="btn-ghost" onclick="exportCSV()">Export CSV</button>
+    <button class="btn-ghost" onclick="document.getElementById('csv-file-input').click()">Import CSV</button>
+    <input type="file" id="csv-file-input" accept=".csv" style="display:none" onchange="importCSV(event)">
     <button class="btn" onclick="switchTab('log')">+ Log Entry</button>
   </div>
 </header>
@@ -492,6 +532,43 @@
   </div>
 
 </main>
+
+<!-- EDIT MODAL -->
+<div class="modal-overlay" id="edit-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeEditModal()">✕</button>
+    <div class="form-title">Edit Entry</div>
+    <div class="form-subtitle" id="edit-modal-subtitle"></div>
+
+    <div class="form-section-label">Date & Body Stats</div>
+    <div class="form-grid">
+      <div class="field"><label>Date</label><input type="date" id="e-date"></div>
+      <div class="field"><label>Weight (kg)</label><input type="number" id="e-weight" step="0.1"></div>
+      <div class="field"><label>Height (cm)</label><input type="number" id="e-height" step="0.1"></div>
+      <div class="field"><label>BMI</label><input type="number" id="e-bmi" step="0.1"></div>
+      <div class="field"><label>Visceral Fat</label><input type="number" id="e-visceral" step="1"></div>
+      <div class="field"><label>Body Age</label><input type="number" id="e-body-age" step="1"></div>
+      <div class="field"><label>Body Fat %</label><input type="number" id="e-fat" step="0.1"></div>
+      <div class="field"><label>Skeletal Muscle (kg)</label><input type="number" id="e-muscle" step="0.1"></div>
+      <div class="field"><label>Resting Metabolism</label><input type="number" id="e-rm" step="1"></div>
+    </div>
+
+    <div class="form-section-label">Circumferences (cm)</div>
+    <div class="form-grid">
+      <div class="field"><label>Waist at Navel</label><input type="number" id="e-waist" step="0.5"></div>
+      <div class="field"><label>5 cm Above Navel</label><input type="number" id="e-above5" step="0.5"></div>
+      <div class="field"><label>5 cm Below Navel</label><input type="number" id="e-below5" step="0.5"></div>
+      <div class="field"><label>10 cm Below Navel</label><input type="number" id="e-below10" step="0.5"></div>
+      <div class="field"><label>Left Thigh (cm)</label><input type="number" id="e-thigh" step="0.5"></div>
+      <div class="field"><label>Right Arm (cm)</label><input type="number" id="e-arm" step="0.5"></div>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn-ghost" onclick="closeEditModal()">Cancel</button>
+      <button class="btn" onclick="saveEditModal()">Save Changes</button>
+    </div>
+  </div>
+</div>
 
 <div class="toast" id="toast"></div>
 
@@ -740,7 +817,10 @@ function renderHistory() {
       <td>${e.below10 ?? '—'}</td>
       <td>${e.thigh ?? '—'}</td>
       <td>${e.arm ?? '—'}</td>
-      <td><button class="btn-ghost" style="padding:4px 10px;font-size:10px;color:var(--red);border-color:var(--red)" onclick="deleteEntry('${e.date}')">✕</button></td>
+      <td style="display:flex;gap:6px;">
+        <button class="btn-ghost" style="padding:4px 10px;font-size:10px;" onclick="openEditModal('${e.date}')">✎</button>
+        <button class="btn-ghost" style="padding:4px 10px;font-size:10px;color:var(--red);border-color:var(--red)" onclick="deleteEntry('${e.date}')">✕</button>
+      </td>
     </tr>`;
   }).join('');
 }
@@ -803,6 +883,66 @@ function deleteEntry(date) {
   renderHistory();
 }
 
+// ─── EDIT MODAL ───────────────────────────────────────────────────────────────
+let editingDate = null;
+
+function openEditModal(date) {
+  const entry = entries.find(e => e.date === date);
+  if (!entry) return;
+  editingDate = date;
+
+  document.getElementById('edit-modal-subtitle').textContent = 'Editing entry for ' + formatDate(date);
+  document.getElementById('e-date').value = entry.date;
+
+  const fields = [
+    ['e-weight','weight'],['e-height','height'],['e-bmi','bmi'],
+    ['e-visceral','visceral_fat'],['e-body-age','body_age'],['e-fat','fat'],
+    ['e-muscle','muscle'],['e-rm','rm'],['e-waist','waist'],
+    ['e-above5','above5'],['e-below5','below5'],['e-below10','below10'],
+    ['e-thigh','thigh'],['e-arm','arm']
+  ];
+  fields.forEach(([id, key]) => {
+    const el = document.getElementById(id);
+    el.value = entry[key] != null ? entry[key] : '';
+  });
+
+  document.getElementById('edit-modal').classList.add('open');
+}
+
+function closeEditModal() {
+  document.getElementById('edit-modal').classList.remove('open');
+  editingDate = null;
+}
+
+function saveEditModal() {
+  const newDate = document.getElementById('e-date').value;
+  if (!newDate) { showToast('Please pick a date.'); return; }
+
+  const n = id => { const v = document.getElementById(id).value; return v === '' ? null : parseFloat(v); };
+
+  const updated = {
+    date: newDate,
+    weight: n('e-weight'), height: n('e-height'), bmi: n('e-bmi'),
+    visceral_fat: n('e-visceral'), body_age: n('e-body-age'), fat: n('e-fat'),
+    muscle: n('e-muscle'), rm: n('e-rm'),
+    waist: n('e-waist'), above5: n('e-above5'), below5: n('e-below5'),
+    below10: n('e-below10'), thigh: n('e-thigh'), arm: n('e-arm')
+  };
+
+  const idx = entries.findIndex(e => e.date === editingDate);
+  if (idx >= 0) entries[idx] = updated;
+
+  saveData(entries);
+  closeEditModal();
+  showToast('Entry updated!');
+  renderHistory();
+}
+
+// Close modal on overlay click
+document.getElementById('edit-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeEditModal();
+});
+
 // ─── EXPORT ──────────────────────────────────────────────────────────────────
 function exportCSV() {
   const cols = ['date','weight','height','bmi','visceral_fat','body_age','fat','muscle','rm','waist','above5','below5','below10','thigh','arm'];
@@ -817,6 +957,64 @@ function exportCSV() {
   a.download = 'randy_body_tracker.csv';
   a.click();
   showToast('CSV exported!');
+}
+
+// ─── IMPORT ──────────────────────────────────────────────────────────────────
+function importCSV(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const text = e.target.result.trim();
+      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+      if (lines.length < 2) { showToast('CSV is empty or invalid.'); return; }
+
+      const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+      const cols = ['date','weight','height','bmi','visceral_fat','body_age','fat','muscle','rm','waist','above5','below5','below10','thigh','arm'];
+
+      // Validate required date column
+      if (!headers.includes('date')) { showToast('CSV missing "date" column.'); return; }
+
+      let imported = 0, skipped = 0, updated = 0;
+
+      lines.slice(1).forEach(line => {
+        const vals = line.split(',').map(v => v.trim());
+        const row = {};
+        headers.forEach((h, i) => { row[h] = vals[i] ?? ''; });
+
+        const date = row['date'];
+        if (!date) { skipped++; return; }
+
+        const entry = { date };
+        cols.filter(c => c !== 'date').forEach(c => {
+          const v = row[c];
+          entry[c] = (v !== '' && v != null && !isNaN(parseFloat(v))) ? parseFloat(v) : null;
+        });
+
+        const idx = entries.findIndex(e => e.date === date);
+        if (idx >= 0) { entries[idx] = entry; updated++; }
+        else { entries.push(entry); imported++; }
+      });
+
+      saveData(entries);
+      // Reset input so same file can be re-imported
+      event.target.value = '';
+
+      const msg = `Imported ${imported} new, updated ${updated}${skipped ? ', skipped ' + skipped : ''}.`;
+      showToast(msg);
+
+      // Refresh whichever view is active
+      const active = document.querySelector('.view.active').id;
+      if (active === 'view-dashboard') renderDashboard();
+      else if (active === 'view-history') renderHistory();
+
+    } catch(err) {
+      showToast('Failed to parse CSV.');
+      console.error(err);
+    }
+  };
+  reader.readAsText(file);
 }
 
 // ─── TOAST ───────────────────────────────────────────────────────────────────

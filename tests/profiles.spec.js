@@ -23,12 +23,12 @@ test('migrates legacy records and isolates entries across profiles and reloads',
   await page.getByRole('button', { name: 'Save Entry', exact: true }).click();
   await expect(page.locator('#summary-grid')).toContainText('85');
   await page.reload();
-  await expect(page.getByLabel('Profile', { exact: true })).toHaveValue(/.+/);
+  await expect(page.getByRole('button', { name: 'Switch to Alex', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#profile-context')).toContainText('Alex');
   await expect(page.locator('#summary-grid')).toContainText('85');
-  await page.getByLabel('Profile', { exact: true }).selectOption({ label: 'Randy' });
+  await page.getByRole('button', { name: 'Switch to Randy', exact: true }).click();
   await expect(page.locator('#summary-grid')).toContainText('72');
-  await page.getByLabel('Profile', { exact: true }).selectOption({ label: 'Alex' });
+  await page.getByRole('button', { name: 'Switch to Alex', exact: true }).click();
   await page.getByText('History', { exact: true }).click();
   await page.locator('#history-tbody button').first().click();
   await page.locator('#e-weight').fill('84');
@@ -37,7 +37,7 @@ test('migrates legacy records and isolates entries across profiles and reloads',
   page.on('dialog', dialog => dialog.accept());
   await page.locator('#history-tbody button').last().click();
   await expect(page.locator('#history-tbody')).toContainText('No entries');
-  await page.getByLabel('Profile', { exact: true }).selectOption({ label: 'Randy' });
+  await page.getByRole('button', { name: 'Switch to Randy', exact: true }).click();
   await expect(page.locator('#history-tbody')).toContainText('72');
 });
 
@@ -68,7 +68,23 @@ test('CSV imports and exports belong only to the selected profile', async ({ pag
   for await (const chunk of stream) csv += chunk;
   expect(csv).toContain('2026-10-02,90');
   expect(csv).not.toContain('67.1');
-  await page.getByLabel('Profile', { exact: true }).selectOption({ label: 'Randy' });
+  await page.getByRole('button', { name: 'Switch to Randy', exact: true }).click();
   await expect(page.locator('#summary-grid')).toContainText('67.1');
   await expect(page.locator('#summary-grid')).not.toContainText('90');
+});
+
+test('profile removal requires confirmation and protects the final profile', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: 'Remove profile', exact: true })).toBeDisabled();
+  await addProfile(page, 'Alex Morgan');
+  await expect(page.getByRole('button', { name: 'Switch to Alex Morgan' })).toContainText('AM');
+  page.once('dialog', dialog => dialog.dismiss());
+  await page.getByRole('button', { name: 'Remove profile', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Switch to Alex Morgan' })).toBeVisible();
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('button', { name: 'Remove profile', exact: true }).click();
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Switch to Alex Morgan' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Switch to Randy' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'Remove profile', exact: true })).toBeDisabled();
 });

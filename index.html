@@ -414,8 +414,20 @@
     pointer-events: none;
   }
   .toast.show { opacity: 1; transform: translateY(0); }
-  .profile-bar { margin: 24px 40px 0; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
-  .profile-bar select { max-width: 100%; min-width: 140px; font-size: 16px; padding: 10px; }
+  .profile-bar { margin: 24px 40px 0; }
+  .profile-switcher, .profile-list { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; }
+  .profile-list { display: contents; }
+  .profile-button { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 76px; padding: 4px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font: inherit; cursor: pointer; }
+  .profile-avatar { display: grid; place-items: center; width: 52px; height: 52px; flex-shrink: 0; border: 1px solid var(--border); border-radius: 50%; background: var(--surface); color: var(--text); font-size: 18px; transition: border-color .15s, background-color .15s; }
+  .profile-name { font-size: 11px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .profile-button:hover .profile-avatar { border-color: var(--accent); }
+  .profile-button[aria-pressed="true"] { color: var(--accent); }
+  .profile-button[aria-pressed="true"] .profile-avatar { background: var(--accent); border-color: var(--accent); color: var(--bg); outline: 1px solid var(--accent); outline-offset: 3px; }
+  .profile-add .profile-avatar { background: transparent; border-style: dashed; font-size: 28px; font-weight: 300; }
+  .profile-details { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 16px 0 8px; }
+  #selected-profile-name { font-size: 12px; overflow-wrap: anywhere; }
+  .profile-remove { color: var(--red); background: none; border: 0; padding: 10px 0; font: inherit; font-size: 11px; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+  .profile-remove:disabled { color: var(--muted); cursor: default; text-decoration: none; }
   .profile-note { width: 100%; font-size: 11px; color: var(--muted); }
   .profile-dialog { margin: auto; background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 28px; width: min(440px, calc(100% - 40px)); }
   .profile-dialog::backdrop { background: rgba(0,0,0,.7); }
@@ -449,9 +461,17 @@
 </header>
 
 <div class="profile-bar">
-  <label for="profile-select">Profile</label>
-  <select id="profile-select" class="metric-select" onchange="switchProfile(this.value)"></select>
-  <button class="btn-ghost" onclick="openProfileDialog()">Add profile</button>
+  <div class="profile-switcher" role="group" aria-label="Profiles">
+    <div id="profile-list" class="profile-list"></div>
+    <button class="profile-button profile-add" aria-label="Add profile" onclick="openProfileDialog()">
+      <span class="profile-avatar" aria-hidden="true">+</span>
+      <span class="profile-name">Add</span>
+    </button>
+  </div>
+  <div class="profile-details">
+    <span id="selected-profile-name"></span>
+    <button id="remove-profile" class="profile-remove" onclick="removeProfile()">Remove profile</button>
+  </div>
   <p class="profile-note">Profiles and measurements are saved in this browser.</p>
 </div>
 <p id="storage-error" role="alert" hidden></p>
@@ -678,10 +698,46 @@ function activeProfile() { return profileState.profiles.find(p => p.id === profi
 let entries = activeProfile().entries.map(e => ({ ...e }));
 
 function renderProfiles() {
-  const select = document.getElementById('profile-select');
-  select.replaceChildren(...profileState.profiles.map(p => new Option(p.name, p.id)));
-  select.value = profileState.activeProfileId;
+  const list = document.getElementById('profile-list');
+  list.replaceChildren(...profileState.profiles.map(p => {
+    const button = document.createElement('button');
+    button.className = 'profile-button';
+    button.dataset.profileId = p.id;
+    button.setAttribute('aria-label', 'Switch to ' + p.name);
+    button.setAttribute('aria-pressed', String(p.id === profileState.activeProfileId));
+    button.title = p.name;
+    const avatar = document.createElement('span');
+    avatar.className = 'profile-avatar';
+    avatar.setAttribute('aria-hidden', 'true');
+    const words = p.name.trim().split(/\s+/);
+    avatar.textContent = (Array.from(words[0])[0] + (words.length > 1 ? Array.from(words[words.length - 1])[0] : '')).toLocaleUpperCase();
+    const label = document.createElement('span');
+    label.className = 'profile-name';
+    label.textContent = p.name;
+    button.append(avatar, label);
+    button.onclick = () => {
+      switchProfile(p.id);
+      [...list.children].find(b => b.dataset.profileId === profileState.activeProfileId)?.focus();
+    };
+    return button;
+  }));
   document.getElementById('profile-context').textContent = activeProfile().name + ' · Body Tracker';
+  document.getElementById('selected-profile-name').textContent = activeProfile().name;
+  const remove = document.getElementById('remove-profile');
+  remove.disabled = profileState.profiles.length === 1;
+  remove.title = remove.disabled ? 'Keep at least one profile. Add another profile before removing this one.' : 'Remove ' + activeProfile().name;
+}
+
+function removeProfile() {
+  if (profileState.profiles.length <= 1) return;
+  const profile = activeProfile();
+  const count = profile.entries.length;
+  if (!confirm(`Remove "${profile.name}" and ${count} saved ${count === 1 ? 'entry' : 'entries'}? This cannot be undone. Export this profile's CSV first if you want a backup.`)) return;
+  const profiles = profileState.profiles.filter(p => p.id !== profile.id);
+  if (!persistProfiles({ profiles, activeProfileId: profiles[0].id })) return;
+  refreshProfile();
+  document.querySelector('#profile-list button')?.focus();
+  showToast(profile.name + ' removed.');
 }
 
 function switchProfile(id) {
@@ -1104,6 +1160,11 @@ function importCSV(event) {
   reader.onload = function(e) {
     try {
       const targetProfile = profileState.profiles.find(p => p.id === targetProfileId);
+      if (!targetProfile) {
+        event.target.value = '';
+        showToast('Import cancelled because the profile was removed.');
+        return;
+      }
       const importedEntries = targetProfile.entries.map(entry => ({ ...entry }));
       const text = e.target.result.trim();
       const lines = text.split('\n').map(l => l.trim()).filter(Boolean);

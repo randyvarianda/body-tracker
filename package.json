@@ -1,0 +1,25 @@
+{
+  "name": "body-tracker",
+  "version": "1.0.0",
+  "description": "A browser-based body measurement tracker with separate profiles",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/*.test.cjs",
+    "test:browser": "playwright test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/randyvarianda/body-tracker.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/randyvarianda/body-tracker/issues"
+  },
+  "homepage": "https://github.com/randyvarianda/body-tracker#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.64.0",
+    "jsdom": "^30.1.2"
+  }
+}

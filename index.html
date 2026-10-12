@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Randy — Body Tracker</title>
+<title>Body Tracker</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
@@ -18,7 +18,7 @@
     --accent2: #60c8f0;
     --accent3: #f060a0;
     --text: #e8eaed;
-    --muted: #6b7280;
+    --muted: #9ba3b1;
     --green: #4ade80;
     --red: #f87171;
     --yellow: #fbbf24;
@@ -57,6 +57,7 @@
   }
   .header-actions {
     display: flex;
+    flex-wrap: wrap;
     gap: 10px;
     align-items: center;
   }
@@ -413,6 +414,23 @@
     pointer-events: none;
   }
   .toast.show { opacity: 1; transform: translateY(0); }
+  .profile-bar { margin: 24px 40px 0; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+  .profile-bar select { max-width: 100%; min-width: 140px; font-size: 16px; padding: 10px; }
+  .profile-note { width: 100%; font-size: 11px; color: var(--muted); }
+  .profile-dialog { margin: auto; background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 28px; width: min(440px, calc(100% - 40px)); }
+  .profile-dialog::backdrop { background: rgba(0,0,0,.7); }
+  .profile-dialog input { margin-top: 8px; width: 100%; padding: 12px; font: inherit; font-size: 16px; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 4px; }
+  #profile-error { color: var(--red); font-size: 12px; margin-top: 10px; }
+  #storage-error { margin: 20px 40px; color: var(--red); font-size: 12px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .empty-state { grid-column: 1 / -1; padding: 24px; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); line-height: 1.8; font-size: 13px; }
+  .tab { background: none; border-top: 0; border-left: 0; border-right: 0; font-family: inherit; }
+  @media (max-width: 600px) {
+    .profile-bar { margin-left: 20px; margin-right: 20px; }
+    .header-actions .btn, .header-actions .btn-ghost { padding: 10px 12px; }
+    .chart-header { flex-wrap: wrap; gap: 12px; }
+    .form-grid { grid-template-columns: minmax(0, 1fr); }
+  }
 </style>
 </head>
 <body>
@@ -420,7 +438,7 @@
 <header>
   <div class="header-title">
     <h1>Body Tracker</h1>
-    <p>Randy · Weight Loss Journey</p>
+    <p id="profile-context"></p>
   </div>
   <div class="header-actions">
     <button class="btn-ghost" onclick="exportCSV()">Export CSV</button>
@@ -430,10 +448,31 @@
   </div>
 </header>
 
+<div class="profile-bar">
+  <label for="profile-select">Profile</label>
+  <select id="profile-select" class="metric-select" onchange="switchProfile(this.value)"></select>
+  <button class="btn-ghost" onclick="openProfileDialog()">Add profile</button>
+  <p class="profile-note">Profiles and measurements are saved in this browser.</p>
+</div>
+<p id="storage-error" role="alert" hidden></p>
+<dialog id="profile-dialog" class="profile-dialog" aria-labelledby="profile-title">
+  <form onsubmit="event.preventDefault(); createProfile()">
+    <h2 id="profile-title" class="form-title">Add profile</h2>
+    <p class="form-subtitle">Start a separate measurement history for another person.</p>
+    <label for="profile-name">Profile name</label>
+    <input id="profile-name" type="text" maxlength="60" required autocomplete="off" aria-describedby="profile-error">
+    <p id="profile-error" role="alert"></p>
+    <div class="form-actions">
+      <button class="btn-ghost" type="button" onclick="document.getElementById('profile-dialog').close()">Cancel</button>
+      <button class="btn" type="submit">Create profile</button>
+    </div>
+  </form>
+</dialog>
+
 <div class="tabs">
-  <div class="tab active" onclick="switchTab('dashboard')" id="tab-dashboard">Dashboard</div>
-  <div class="tab" onclick="switchTab('history')" id="tab-history">History</div>
-  <div class="tab" onclick="switchTab('log')" id="tab-log">Log Entry</div>
+  <button class="tab active" onclick="switchTab('dashboard')" id="tab-dashboard">Dashboard</button>
+  <button class="tab" onclick="switchTab('history')" id="tab-history">History</button>
+  <button class="tab" onclick="switchTab('log')" id="tab-log">Log Entry</button>
 </div>
 
 <main>
@@ -570,11 +609,13 @@
   </div>
 </div>
 
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="status"></div>
 
 <script>
 // ─── DATA ───────────────────────────────────────────────────────────────────
-const STORAGE_KEY = 'randy_body_tracker_v1';
+const STORAGE_KEY = 'body_tracker_profiles_v1';
+const LEGACY_STORAGE_KEY = 'randy_body_tracker_v1';
+let storageReadable = true;
 
 const SEED = [{
   date: '2024-11-08',
@@ -588,16 +629,99 @@ const SEED = [{
 function loadData() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch(e) {}
-  return [...SEED];
+    if (raw) {
+      const saved = JSON.parse(raw);
+      if (!Array.isArray(saved.profiles) || !saved.profiles.length ||
+          !saved.profiles.every(p => typeof p.id === 'string' && typeof p.name === 'string' && Array.isArray(p.entries))) throw new Error('Invalid profiles');
+      if (!saved.profiles.some(p => p.id === saved.activeProfileId)) saved.activeProfileId = saved.profiles[0].id;
+      return saved;
+    }
+    const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+    const records = legacy === null ? SEED : JSON.parse(legacy);
+    if (!Array.isArray(records)) throw new Error('Invalid measurements');
+    return { activeProfileId: 'randy', profiles: [{ id: 'randy', name: 'Randy', entries: records }] };
+  } catch(e) {
+    storageReadable = false;
+    storageError('Saved records could not be loaded. Storage has not been changed. Reload after restoring access to your browser storage.');
+    return { activeProfileId: 'randy', profiles: [{ id: 'randy', name: 'Randy', entries: [] }] };
+  }
 }
 
-function saveData(data) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+function storageError(message) {
+  const el = document.getElementById('storage-error');
+  el.textContent = message;
+  el.hidden = false;
 }
 
-let entries = loadData();
+function persistProfiles(next) {
+  if (!storageReadable) return false;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    profileState = next;
+    document.getElementById('storage-error').hidden = true;
+    return true;
+  } catch(e) {
+    storageError('Changes could not be saved. Your browser storage may be full or unavailable. Please try again.');
+    return false;
+  }
+}
+
+function saveData(data, profileId = profileState.activeProfileId) {
+  const next = { ...profileState, profiles: profileState.profiles.map(p => p.id === profileId ? { ...p, entries: data.map(e => ({ ...e })) } : p) };
+  const saved = persistProfiles(next);
+  entries = activeProfile().entries.map(e => ({ ...e }));
+  return saved;
+}
+
+let profileState = loadData();
+function activeProfile() { return profileState.profiles.find(p => p.id === profileState.activeProfileId); }
+let entries = activeProfile().entries.map(e => ({ ...e }));
+
+function renderProfiles() {
+  const select = document.getElementById('profile-select');
+  select.replaceChildren(...profileState.profiles.map(p => new Option(p.name, p.id)));
+  select.value = profileState.activeProfileId;
+  document.getElementById('profile-context').textContent = activeProfile().name + ' · Body Tracker';
+}
+
+function switchProfile(id) {
+  if (id === profileState.activeProfileId || !profileState.profiles.some(p => p.id === id)) return;
+  if (!persistProfiles({ ...profileState, activeProfileId: id })) { renderProfiles(); return; }
+  refreshProfile();
+}
+
+function refreshProfile() {
+  entries = activeProfile().entries.map(e => ({ ...e }));
+  closeEditModal();
+  clearForm();
+  renderProfiles();
+  renderDashboard();
+  renderHistory();
+}
+
+function openProfileDialog() {
+  document.getElementById('profile-name').value = '';
+  document.getElementById('profile-error').textContent = '';
+  document.getElementById('profile-dialog').showModal();
+  document.getElementById('profile-name').focus();
+}
+
+function createProfile() {
+  const name = document.getElementById('profile-name').value.trim();
+  const error = document.getElementById('profile-error');
+  if (!name || name.length > 60) { error.textContent = 'Enter a name between 1 and 60 characters.'; return; }
+  if (profileState.profiles.some(p => p.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+    error.textContent = 'A profile with this name already exists.'; return;
+  }
+  const profile = { id: crypto.randomUUID(), name, entries: [] };
+  if (!persistProfiles({ activeProfileId: profile.id, profiles: [...profileState.profiles, profile] })) {
+    error.textContent = 'Profile could not be saved. Check browser storage and try again.'; return;
+  }
+  document.getElementById('profile-dialog').close();
+  refreshProfile();
+  switchTab('dashboard');
+  showToast('Profile created.');
+}
 
 // ─── NAVIGATION ─────────────────────────────────────────────────────────────
 function switchTab(name) {
@@ -614,6 +738,14 @@ function renderDashboard() {
   const sorted = [...entries].sort((a,b) => a.date.localeCompare(b.date));
   const latest = sorted[sorted.length - 1];
   const prev = sorted.length > 1 ? sorted[sorted.length - 2] : null;
+  document.querySelector('.chart-section').hidden = !latest;
+  document.getElementById('circ-section').hidden = !latest;
+  if (!latest) {
+    document.getElementById('summary-grid').innerHTML = '<div class="empty-state">No measurements yet. Use Log Entry to add your first measurement.</div>';
+    document.getElementById('circ-grid').replaceChildren();
+    drawChart();
+    return;
+  }
 
   const cards = [
     { key: 'weight', label: 'Weight', unit: 'kg', lowerIsBetter: true },
@@ -800,6 +932,7 @@ function drawLineChart(ctx, canvas, labels, values) {
 function renderHistory() {
   const sorted = [...entries].sort((a,b) => b.date.localeCompare(a.date));
   const tbody = document.getElementById('history-tbody');
+  if (!sorted.length) { tbody.innerHTML = '<tr><td colspan="14">No entries for this profile yet.</td></tr>'; return; }
   tbody.innerHTML = sorted.map((e, i) => {
     const prev = sorted[i + 1];
     const wd = prev ? delta(e.weight, prev.weight, true) : '';
@@ -868,18 +1001,19 @@ function saveEntry() {
   };
 
   const existing = entries.findIndex(e => e.date === date);
-  if (existing >= 0) { entries[existing] = entry; showToast('Entry updated!'); }
-  else { entries.push(entry); showToast('Entry saved!'); }
+  if (existing >= 0) entries[existing] = entry;
+  else entries.push(entry);
 
-  saveData(entries);
+  if (!saveData(entries)) return;
+  showToast(existing >= 0 ? 'Entry updated!' : 'Entry saved!');
   clearForm();
-  setTimeout(() => switchTab('dashboard'), 600);
+  switchTab('dashboard');
 }
 
 function deleteEntry(date) {
   if (!confirm('Delete entry for ' + formatDate(date) + '?')) return;
   entries = entries.filter(e => e.date !== date);
-  saveData(entries);
+  if (!saveData(entries)) return;
   renderHistory();
 }
 
@@ -932,7 +1066,7 @@ function saveEditModal() {
   const idx = entries.findIndex(e => e.date === editingDate);
   if (idx >= 0) entries[idx] = updated;
 
-  saveData(entries);
+  if (!saveData(entries)) return;
   closeEditModal();
   showToast('Entry updated!');
   renderHistory();
@@ -954,8 +1088,10 @@ function exportCSV() {
   const blob = new Blob([csv], { type: 'text/csv' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'randy_body_tracker.csv';
+  const filename = activeProfile().name.toLowerCase().replace(/[^a-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') || 'profile';
+  a.download = filename + '_body_tracker.csv';
   a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   showToast('CSV exported!');
 }
 
@@ -963,9 +1099,12 @@ function exportCSV() {
 function importCSV(event) {
   const file = event.target.files[0];
   if (!file) return;
+  const targetProfileId = profileState.activeProfileId;
   const reader = new FileReader();
   reader.onload = function(e) {
     try {
+      const targetProfile = profileState.profiles.find(p => p.id === targetProfileId);
+      const importedEntries = targetProfile.entries.map(entry => ({ ...entry }));
       const text = e.target.result.trim();
       const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
       if (lines.length < 2) { showToast('CSV is empty or invalid.'); return; }
@@ -992,16 +1131,16 @@ function importCSV(event) {
           entry[c] = (v !== '' && v != null && !isNaN(parseFloat(v))) ? parseFloat(v) : null;
         });
 
-        const idx = entries.findIndex(e => e.date === date);
-        if (idx >= 0) { entries[idx] = entry; updated++; }
-        else { entries.push(entry); imported++; }
+        const idx = importedEntries.findIndex(e => e.date === date);
+        if (idx >= 0) { importedEntries[idx] = entry; updated++; }
+        else { importedEntries.push(entry); imported++; }
       });
 
-      saveData(entries);
+      if (!saveData(importedEntries, targetProfileId)) return;
       // Reset input so same file can be re-imported
       event.target.value = '';
 
-      const msg = `Imported ${imported} new, updated ${updated}${skipped ? ', skipped ' + skipped : ''}.`;
+      const msg = `${targetProfile.name}: imported ${imported} new, updated ${updated}${skipped ? ', skipped ' + skipped : ''}.`;
       showToast(msg);
 
       // Refresh whichever view is active
@@ -1014,6 +1153,7 @@ function importCSV(event) {
       console.error(err);
     }
   };
+  reader.onerror = () => showToast('Could not read the CSV file. Please try again.');
   reader.readAsText(file);
 }
 
@@ -1027,7 +1167,12 @@ function showToast(msg) {
 
 // ─── INIT ────────────────────────────────────────────────────────────────────
 setTodayDate();
+renderProfiles();
 renderDashboard();
+document.querySelectorAll('.field').forEach(field => {
+  const input = field.querySelector('input');
+  if (input) field.querySelector('label').htmlFor = input.id;
+});
 
 window.addEventListener('resize', () => {
   if (document.getElementById('view-dashboard').classList.contains('active')) drawChart();
